@@ -1,0 +1,105 @@
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Repository;
+import org.springframework.web.bind.annotation.*;
+
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.validation.constraints.NotEmpty;
+import java.util.List;
+
+@SpringBootApplication
+public class BookApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(BookApplication.class, args);
+    }
+
+    @EnableWebSecurity
+    public class SecurityConfig extends WebSecurityConfigurerAdapter {
+        @Override
+        protected void configure(HttpSecurity http) throws Exception {
+            http.authorizeRequests().anyRequest().authenticated().and().httpBasic();
+        }
+
+        @Bean
+        public BCryptPasswordEncoder passwordEncoder() {
+            return new BCryptPasswordEncoder();
+        }
+    }
+}
+
+@Entity
+class Book {
+
+    @Id
+    @GeneratedValue(strategy=GenerationType.AUTO)
+    private Long id;
+
+    @NotEmpty(message = "Title may not be empty")
+    private String title;
+
+    @NotEmpty(message = "Author may not be empty")
+    private String author;
+
+    // getters and setters...
+}
+
+@Repository
+interface BookRepository extends CrudRepository<Book, Long> {}
+
+@RestController
+class BookController {
+
+    private final BookRepository repository;
+
+    BookController(BookRepository repository) {
+        this.repository = repository;
+    }
+
+    @GetMapping("/books")
+    List<Book> all() {
+        return repository.findAll();
+    }
+
+    @PostMapping("/books")
+    Book newBook(@Valid @RequestBody Book newBook) {
+        return repository.save(newBook);
+    }
+
+    @GetMapping("/books/{id}")
+    Book one(@PathVariable Long id) {
+        return repository.findById(id).orElseThrow(() -> new BookNotFoundException(id));
+    }
+
+    @PutMapping("/books/{id}")
+    Book replaceBook(@Valid @RequestBody Book newBook, @PathVariable Long id) {
+        return repository.findById(id).map(book -> {
+            book.setTitle(newBook.getTitle());
+            book.setAuthor(newBook.getAuthor());
+            return repository.save(book);
+        }).orElseGet(() -> {
+            newBook.setId(id);
+            return repository.save(newBook);
+        });
+    }
+
+    @DeleteMapping("/books/{id}")
+    void deleteBook(@PathVariable Long id) {
+        repository.deleteById(id);
+    }
+}
+
+@ResponseStatus(HttpStatus.NOT_FOUND)
+class BookNotFoundException extends RuntimeException {
+    public BookNotFoundException(Long id) {
+        super("Could not find book " + id);
+    }
+}
